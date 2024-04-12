@@ -1,20 +1,25 @@
-%% Figure 16
+%% Figure 1
 clear; clc;
-K=16;k=0:(K-1);
+K_vec=16;
+K=K_vec(1);
+k=0:(K-1);
 theta_a = pi/6;
 
 %******************
-% Beta distribution
-% a=20;
 % von Mises
-mu = 0;
-kappa = 2;
+mu_vec = 0;
+mu = mu_vec(1);
+kappa_vec = 2;
+kappa = kappa_vec(1);
 %******************
 
-SNR_dB_vec = -20:15;
+SNR_dB_vec = -20:15; 
 SNR_vec = 10.^(SNR_dB_vec/10);
 sigma = 1;
- 
+group_vec=[10];
+WWB = WWB_evaluate(kappa_vec, SNR_dB_vec, mu_vec, K_vec, group_vec);
+
+BZB = BZB_evaluate_0327_v2(kappa_vec, SNR_dB_vec, mu_vec, K_vec, group_vec);
 
 J_D = SNR_vec * (K*(K-1)*(2*K-1)) / 3;
 ECRB = 1./J_D;
@@ -35,9 +40,11 @@ omega_da = circ_vmrnd(mu, kappa, n_trials)';
 
 estError_ML=zeros(length(SNR_vec), n_trials);
 estError_MAP=zeros(length(SNR_vec), n_trials);
+h = waitbar( 0, sprintf( 'Monte-Carlo simulation for %.2f dB in progress ...', SNR_dB_vec(1) ) );
+cont = 1/length(SNR_vec);
 for idx_SNR = 1:length(SNR_vec)
-    h = waitbar( 0, sprintf( 'Monte-Carlo simulation for %.2f dB in progress ...', SNR_dB_vec(idx_SNR) ) );
-    waitbar( idx_SNR/length(SNR_vec), h );
+    waitbar( cont, h, sprintf( 'Monte-Carlo simulation for %.2f dB in progress ...', SNR_dB_vec(idx_SNR) ) );
+    cont = cont + 1/length(SNR_vec);
     
     omega_d_ML = zeros(1, length(n_trials));
     omega_d_MAP = zeros(1, length(n_trials));
@@ -67,7 +74,7 @@ for idx_SNR = 1:length(SNR_vec)
         [~, idmax_MAP] = max(A_2);
         omega_d_MAP(idb) = omega_d(idmax_MAP);
     end
-    close( h );
+    
     estError_ML(idx_SNR, :) = omega_d_ML - omega_da;
     estError_MAP(idx_SNR, :) = omega_d_MAP - omega_da;
     for idx_estError1 = 1:n_trials
@@ -92,23 +99,53 @@ for idx_SNR = 1:length(SNR_vec)
 %     RMSE_ML(idx_SNR) = sqrt((1/n_trials) * (2-2*sum(cos(omega_d_ML - omega_da))));
 %     RMSE_MAP(idx_SNR) = sqrt((1/n_trials) * (2-2*sum(cos(omega_d_MAP - omega_da))));
 end
+close( h );
+
+EZZB = zeros(1, length(SNR_dB_vec));
+for idx_SNR = 1:length(SNR_vec)
+    SNR = SNR_vec(idx_SNR);
+    J_F = SNR* (K*(K-1)*(2*K-1)) / 3;
+    sigma2 = -2* log(besseli(1,kappa)/besseli(0,kappa));
+    EZZB(idx_SNR)=2*sigma2*(1-normcdf(sqrt(K*SNR),0,1))+(J_F.^(-1)).*gammainc(K*SNR/2,1.5);
+end
 
 save("WWB_NF1.mat")
 %%
-C = {[0.3010 0.7450 0.9330],...
-    'k',...
-    [0.4660 0.6740 0.1880],...
-    [0.4940 0.1840 0.5560],...
-    [0.9290 0.6940 0.1250]}; % Cell array of colors.
+presentation = 1;      % 0 for manuscript (B/W), 1 for pres (color)
+if presentation
+    lw = 1.5;
+    lwW = 2.0;
+    FS = 14;
+else
+    lw = 0.5;
+    lwW = 0.5;
+    FS = 12;
+end
+
+C = {[0.6350 0.0780 0.1840],... % ML, red
+    [0.6350 0.0780 0.1840],... % MAP, red
+    [0.4660 0.6740 0.1880],... % CRB, green
+    [0.9290 0.6940 0.1250],...% BCRB, yellow
+    [0.3010 0.7450 0.9330],...%Barankin/BZB
+    [0.3010 0.7450 0.9330],...%EZZB
+    [0.3010 0.7450 0.9330]}; % WWB,Cell array of colors.
 
 close;figure(1);
-plot(SNR_dB_vec, 10*log10(RMSE_ML), '--o');hold on;
-plot(SNR_dB_vec, 10*log10(RMSE_MAP), '--*');hold on;
-plot(SNR_dB_vec, 10*log10(sqrt(ECRB)), 'marker','.','MarkerSize',10,'Color', C{3});hold on;
-plot(SNR_dB_vec, 10*log10(sqrt(BCRB_vm)), '-','Color',C{5});hold off;
+
+plot(SNR_dB_vec, 10*log10(RMSE_ML), '-.', 'Color', C{1}, 'Linewidth', lwW);hold on;
+plot(SNR_dB_vec, 10*log10(RMSE_MAP), '--', 'Color', C{2}, 'Linewidth', lwW);hold on;
+plot(SNR_dB_vec, 10*log10(sqrt(ECRB)), 'marker','.','MarkerSize',14,'Color', C{3},'Linewidth', lwW);hold on;
+plot(SNR_dB_vec, 10*log10(sqrt(BCRB_vm)), '-','Color',C{4},'Linewidth', lwW);hold on;
+plot(SNR_dB_vec, BZB,   '-.', 'color', C{5},  'Linewidth', lwW);hold on;%Barankin/BZB
+plot(SNR_dB_vec, 10*log10(sqrt(EZZB)), ':','Color', C{6},'Linewidth', lwW);hold on;
+plot(SNR_dB_vec, WWB, '-', 'color', C{7},  'Linewidth', lwW);hold on;
 grid on;axis([-20, 15, -25, 5]);
-legend('ML','MAP','ECRB','BCRB');
+legend('ML','MAP','CRB','BCRB','Barankin','ZZB','WWB','Fontsize',10,'box','off');% CRB here is actually ECRB
+set(gca,'XMinorTick','on','YMinorTick','on','TickDir','out')
 xlabel('SNR (dB)');ylabel('10*log_{10}(RMSE)');
+ax = gca;
+ax.LineWidth = 1.5;
+
 ann_x = [0.25 0.15];
 ann_y = [0.4 0.57];
 annotation('line',ann_x,ann_y,'color', 'k');
@@ -119,8 +156,8 @@ annotation('ellipse',dim)
 axes('Position',[.2 .2 .2 .2])
 box on
 hw_zoom_ECRB=plot(SNR_dB_vec, 10*log10(sqrt(ECRB)), 'marker','.','MarkerSize',15,'Color', C{3});hold on;
-hw_zoom_BCRB=plot(SNR_dB_vec, 10*log10(sqrt(BCRB_vm)), '-','Color',C{5});
+hw_zoom_BCRB=plot(SNR_dB_vec, 10*log10(sqrt(BCRB_vm)), '-','Color',C{4});
 grid on;axis([-20, -18, -7.5, -6.5]);
-legend('ECRB','BCRB');
+legend('CRB','BCRB');
 hold off;
 
